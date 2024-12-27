@@ -31,4 +31,4 @@ Edit the script to include the following:
 Start the script using:
 
 ```bash
-python3 your_script.py
+python3 node_monitor.py
