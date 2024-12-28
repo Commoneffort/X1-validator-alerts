@@ -21,12 +21,11 @@ SOLANA_CLI_PATH = "/usr/local/bin/solana"  # Adjust this if your path differs
 # Validator identity pubkey
 VALIDATOR_IDENTITY = "your_validator_identity_pubkey_here"  # Replace with your validator's identity pubkey
 
-# Retry configuration
-MAX_RETRIES = 5  # Max number of retries before reporting validator offline
-RETRY_DELAY = 30  # Delay between retries in seconds
 
 def collect_performance_metrics():
-    # Only collect disk usage
+    """
+    Collect system metrics like disk usage.
+    """
     disk_usage = psutil.disk_usage('/').percent
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -34,8 +33,8 @@ def collect_performance_metrics():
         "timestamp": current_time,
         "disk_usage": disk_usage,
     }
-
     return performance_data
+
 
 def get_skipped_slots():
     """
@@ -48,7 +47,7 @@ def get_skipped_slots():
 
         # Parse the output as JSON
         data = json.loads(result.stdout)
-        for validator in data["leaders"]:
+        for validator in data.get("leaders", []):
             if validator["identityPubkey"] == VALIDATOR_IDENTITY:
                 skipped_slots = validator["skippedSlots"]
                 return skipped_slots
@@ -57,7 +56,11 @@ def get_skipped_slots():
         print(f"Error fetching skipped slots: {e}")
         return None
 
+
 def send_telegram_message(message):
+    """
+    Send a message to Telegram.
+    """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -71,7 +74,11 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"Error sending message: {e}")
 
+
 def check_thresholds_and_alert(metrics, skipped_slots):
+    """
+    Check for threshold violations and send alerts.
+    """
     alerts = []
 
     # Disk usage alert
@@ -86,13 +93,20 @@ def check_thresholds_and_alert(metrics, skipped_slots):
         message = "\n".join(alerts)
         send_telegram_message(message)
 
+
 def save_performance_data(data):
-    with open("performance_data.json", "a") as f:  # Append data instead of overwriting
+    """
+    Save performance data to a JSON file.
+    """
+    with open("performance_data.json", "a") as f:
         f.write(json.dumps(data) + "\n")
 
-def monitor_validator():
+
+def main():
+    """
+    Main function to monitor performance metrics and skipped slots.
+    """
     last_skipped_slots = 0  # Keep track of the last skipped slots count
-    consecutive_failures = 0  # Track how many consecutive failures to get data
 
     while True:
         # Collect system metrics
@@ -101,29 +115,19 @@ def monitor_validator():
         # Check for skipped slots
         skipped_slots = get_skipped_slots()
 
-        if skipped_slots is None:
-            # If we can't fetch skipped slots, increment failure count
-            consecutive_failures += 1
-            if consecutive_failures >= MAX_RETRIES:
-                # Send alert if max retries reached
-                send_telegram_message("🚨 <b>Validator Offline Alert:</b> The validator seems to be offline or unresponsive.")
-                consecutive_failures = 0  # Reset failure count after sending alert
-        else:
-            # Reset failure count if we successfully get skipped slots
-            consecutive_failures = 0
-
-            # Check for new skips and trigger alerts
-            if skipped_slots > last_skipped_slots:
-                new_skips = skipped_slots - last_skipped_slots
-                last_skipped_slots = skipped_slots  # Update last skipped slots count
-                metrics["skipped_slots"] = skipped_slots
-                check_thresholds_and_alert(metrics, new_skips)
+        # Check for new skips and trigger alerts
+        if skipped_slots is not None and skipped_slots > last_skipped_slots:
+            new_skips = skipped_slots - last_skipped_slots
+            last_skipped_slots = skipped_slots  # Update last skipped slots count
+            metrics["skipped_slots"] = skipped_slots
+            check_thresholds_and_alert(metrics, new_skips)
 
         # Save performance metrics
         save_performance_data(metrics)
         print(metrics)  # Print the metrics for immediate feedback
 
-        time.sleep(60)  # Collect data every minute
+        time.sleep(60)  # Monitor every minute
+
 
 if __name__ == "__main__":
-    monitor_validator()
+    main()
